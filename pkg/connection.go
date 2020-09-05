@@ -1,12 +1,15 @@
 package ilo
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"image"
+	"io/ioutil"
 	"net"
 	"net/http"
+	"time"
 )
 
 type Connection struct {
@@ -15,6 +18,9 @@ type Connection struct {
 	socket *net.Conn
 
 	hostname string
+	username string
+	password string
+
 	sessionKey string
 }
 
@@ -26,14 +32,99 @@ func New() Connection {
 	return Connection{client: http.DefaultClient}
 }
 
-func (c *Connection) Connect(hostname string, sessionKey string) error {
+type LoginRequest struct {
+	Method string `json:"method"`
+	Username string `json:"user_login"`
+	Password string `json:"password"`
+}
+
+type LoginResponse struct {
+	SessionKey string `json:"session_key"`
+	UserName string `json:"user_name"`
+	UserAccount string `json:"user_account"`
+	UserDN string `json:"user_dn"`
+	UserType string `json:"user_type"`
+	UserIp string `json:"user_ip"`
+	UserExpires IloTimestamp `json:"user_expires"`
+	LoginPriv int `json:"login_priv"`
+	RemoteConsPriv int `json:"remote_cons_priv"`
+	VirtualMediaPriv int `json:"virtual_media_priv"`
+	ResetPriv int `json:"reset_priv"`
+	ConfigPriv int `json:"config_priv"`
+	UserPriv int `json:"user_priv"`
+}
+
+type IloTimestamp struct {
+	time time.Time
+}
+
+func (i IloTimestamp) UnmarshalJSON(data []byte) error {
+	time, err := time.Parse("\"Mon Jan 02 15:04:05 2006\"", string(data))
+	if err != nil {
+		return err
+	}
+
+	i.time = time
+
+	return nil
+}
+
+func (c *Connection) login() error{
+	url := fmt.Sprintf("https://%s/json/login_session", c.hostname)
+	loginRequest := LoginRequest{
+		Method:   "login",
+		Username: c.username,
+		Password: c.password,
+	}
+
+	loginRequestBytes, err := json.Marshal(&loginRequest)
+
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(loginRequestBytes))
+	if err != nil {
+		return err
+	}
+
+	res, err := c.client.Do(req)
+	if err != nil {
+		return err
+	}
+
+	bodyBytes, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return err
+	}
+
+	var loginResponse LoginResponse
+
+	err = json.Unmarshal(bodyBytes, &loginResponse)
+	if err != nil {
+		return err
+	}
+
+	c.sessionKey = loginResponse.SessionKey
+	return nil
+}
+
+func (c *Connection) Connect(hostname string, username string, password string) error {
+	c.hostname = hostname
+	c.username = username
+	c.password = password
+	err := c.login()
+	if err != nil {
+		return err
+	}
+
 	url := fmt.Sprintf("https://%s/json/rc_info", hostname)
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return err
 	}
 
-	req.AddCookie(&http.Cookie{Name: "sessionKey", Value: sessionKey})
+	req.AddCookie(&http.Cookie{Name: "sessionKey", Value: c.sessionKey})
 
 	res, err := c.client.Do(req)
 	if err != nil {
@@ -46,9 +137,6 @@ func (c *Connection) Connect(hostname string, sessionKey string) error {
 	if err != nil {
 		return err
 	}
-
-	c.hostname = hostname
-	c.sessionKey = sessionKey
 
 	return nil
 }

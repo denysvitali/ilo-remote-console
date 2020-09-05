@@ -15,7 +15,7 @@ var tlsSkipHttpClient = http.Client{Transport:
 
 func TestConnect(t *testing.T){
 	connection := ilo.NewCustom(&tlsSkipHttpClient)
-	err := connection.Connect("10.1.0.3", os.Getenv("SESSION_KEY"))
+	err := connection.Connect("10.1.0.3", os.Getenv("ILO_USERNAME"), os.Getenv("ILO_PASSWORD"))
 
 	if err != nil {
 		t.Fatal(err)
@@ -27,7 +27,7 @@ func TestConnect(t *testing.T){
 
 func TestImage(t *testing.T){
 	connection := ilo.NewCustom(&tlsSkipHttpClient)
-	err := connection.Connect("10.1.0.3", os.Getenv("SESSION_KEY"))
+	err := connection.Connect("10.1.0.3", os.Getenv("ILO_USERNAME"), os.Getenv("ILO_PASSWORD"))
 
 	if err != nil {
 		t.Fatal(err)
